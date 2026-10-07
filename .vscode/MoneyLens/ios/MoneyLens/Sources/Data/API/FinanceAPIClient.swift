@@ -58,6 +58,31 @@ struct DevelopmentSession: Decodable {
     let expiresIn: Int
 }
 
+struct GmailConnectionStatus: Decodable {
+    let connected: Bool
+    let connectedAt: Date?
+}
+
+struct GmailConnectResponse: Decodable {
+    let authorizationUrl: URL
+    let expiresIn: Int
+}
+
+struct GmailSyncResponse: Decodable {
+    let runId: UUID
+    let status: String
+    let addedCount: Int
+    let skippedCount: Int
+    let unsupportedCount: Int
+    let examinedCount: Int
+    let reconciled: Bool
+}
+
+struct GmailDisconnectResponse: Decodable {
+    let disconnected: Bool
+    let googleRevocation: String
+}
+
 enum FinanceAPIError: LocalizedError {
     case missingBaseURL
     case developmentSessionUnavailable
@@ -151,6 +176,33 @@ actor FinanceAPIClient {
         return try await send(url: url)
     }
 
+    func gmailConnection() async throws -> GmailConnectionStatus {
+        try await get("/v1/gmail/connection")
+    }
+
+    func connectGmail() async throws -> GmailConnectResponse {
+        try await send(
+            url: endpoint("/v1/gmail/connect"),
+            method: "POST",
+            body: Data("{}".utf8)
+        )
+    }
+
+    func syncGmail() async throws -> GmailSyncResponse {
+        try await send(
+            url: endpoint("/v1/sync"),
+            method: "POST",
+            body: Data("{}".utf8)
+        )
+    }
+
+    func disconnectGmail() async throws -> GmailDisconnectResponse {
+        try await send(
+            url: endpoint("/v1/gmail/connection"),
+            method: "DELETE"
+        )
+    }
+
     private func get<Response: Decodable>(_ path: String) async throws -> Response {
         try await send(url: endpoint(path))
     }
@@ -162,9 +214,13 @@ actor FinanceAPIClient {
         return baseURL.appending(path: path)
     }
 
-    private func send<Response: Decodable>(url: URL) async throws -> Response {
+    private func send<Response: Decodable>(
+        url: URL,
+        method: String = "GET",
+        body: Data? = nil
+    ) async throws -> Response {
         var token = try await accessToken()
-        var response = try await perform(url: url, token: token)
+        var response = try await perform(url: url, token: token, method: method, body: body)
 
         if response.statusCode == 401 {
             try keychain.delete()
@@ -172,7 +228,7 @@ actor FinanceAPIClient {
                 throw FinanceAPIError.unauthorized
             }
             token = try await createDevelopmentSession()
-            response = try await perform(url: url, token: token)
+            response = try await perform(url: url, token: token, method: method, body: body)
         }
 
         guard (200..<300).contains(response.statusCode) else {
@@ -180,7 +236,8 @@ actor FinanceAPIClient {
                 try keychain.delete()
                 throw FinanceAPIError.unauthorized
             }
-            let message = String(data: response.data, encoding: .utf8) ?? "Request failed."
+            let message = (try? decoder.decode(APIErrorResponse.self, from: response.data).error)
+                ?? "Request failed."
             throw FinanceAPIError.server(statusCode: response.statusCode, message: message)
         }
 
@@ -191,10 +248,19 @@ actor FinanceAPIClient {
         }
     }
 
-    private func perform(url: URL, token: String) async throws -> (data: Data, statusCode: Int) {
+    private func perform(
+        url: URL,
+        token: String,
+        method: String,
+        body: Data?
+    ) async throws -> (data: Data, statusCode: Int) {
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
 
         let (data, response) = try await urlSession.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -202,6 +268,10 @@ actor FinanceAPIClient {
         }
 
         return (data, httpResponse.statusCode)
+    }
+
+    private struct APIErrorResponse: Decodable {
+        let error: String
     }
 
     private func accessToken() async throws -> String {

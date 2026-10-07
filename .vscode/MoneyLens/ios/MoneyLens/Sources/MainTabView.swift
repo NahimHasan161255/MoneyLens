@@ -56,12 +56,8 @@ struct MainTabView: View {
             .tag(AppTab.charts)
 
             NavigationStack {
-                EmptyFeatureView(
-                    title: AppTab.settings.rawValue,
-                    symbol: AppTab.settings.symbol,
-                    description: "Account settings are coming in a later step."
-                )
-                .navigationTitle(AppTab.settings.rawValue)
+                SettingsView()
+                    .navigationTitle(AppTab.settings.rawValue)
             }
             .tabItem {
                 Label(AppTab.settings.rawValue, systemImage: AppTab.settings.symbol)
