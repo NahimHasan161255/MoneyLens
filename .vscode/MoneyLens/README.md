@@ -138,6 +138,30 @@ records; this operation does not delete the user's Gmail messages.
 Apple sign-in and a protected production API URL require Apple Developer
 account setup, the Sign in with Apple capability, an actual app bundle
 identifier, and HTTPS API deployment before a Release build can sign in.
+The app's bundle identifier and Release API address are build settings so they
+can be supplied without changing source files. On macOS, pass the values when
+archiving, along with the Apple Developer Team ID and signing configuration:
+
+```sh
+cd ios
+xcodegen generate --spec project.yml
+xcodebuild archive \
+  -project MoneyLens.xcodeproj \
+  -scheme MoneyLens \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath build/MoneyLens.xcarchive \
+  -allowProvisioningUpdates \
+  CODE_SIGN_STYLE=Automatic \
+  DEVELOPMENT_TEAM=YOUR_APPLE_TEAM_ID \
+  MONEYLENS_BUNDLE_IDENTIFIER=com.your-domain.MoneyLens \
+  MONEYLENS_RELEASE_API_BASE_URL=https://api.your-domain.com
+```
+
+Replace both example values with identifiers and a host you control. Set
+`APPLE_SIGN_IN_AUDIENCE` on the backend to the exact same bundle identifier.
+Release networking rejects non-HTTPS API URLs before sending requests; the
+local HTTP API remains available only to development-session builds.
 
 ## Japanese transaction parser
 

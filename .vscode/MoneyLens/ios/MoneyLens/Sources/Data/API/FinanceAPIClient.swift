@@ -148,6 +148,7 @@ struct AccountDeletionResponse: Decodable {
 
 enum FinanceAPIError: LocalizedError {
     case missingBaseURL
+    case insecureBaseURL
     case developmentSessionUnavailable
     case invalidResponse
     case unauthorized
@@ -157,6 +158,8 @@ enum FinanceAPIError: LocalizedError {
         switch self {
         case .missingBaseURL:
             "The API address is not configured for this build."
+        case .insecureBaseURL:
+            "Release builds require an HTTPS API address."
         case .developmentSessionUnavailable:
             "App sign-in is not available in this build."
         case .invalidResponse:
@@ -440,6 +443,13 @@ actor FinanceAPIClient {
     private func endpoint(_ path: String) throws -> URL {
         guard let baseURL else {
             throw FinanceAPIError.missingBaseURL
+        }
+        guard baseURL.host != nil else {
+            throw FinanceAPIError.missingBaseURL
+        }
+        guard baseURL.scheme?.lowercased() == "https"
+                || (allowsDevelopmentSession && baseURL.scheme?.lowercased() == "http") else {
+            throw FinanceAPIError.insecureBaseURL
         }
         return baseURL.appending(path: path)
     }

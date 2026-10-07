@@ -9,6 +9,36 @@ final class MoneyLensTests: XCTestCase {
         )
     }
 
+    func testReleaseAPIClientRejectsHTTPBeforeSendingRequests() async {
+        let client = FinanceAPIClient(
+            baseURL: URL(string: "http://api.example.com"),
+            allowsDevelopmentSession: false
+        )
+
+        do {
+            _ = try await client.dashboard()
+            XCTFail("Expected an insecure API URL to be rejected.")
+        } catch FinanceAPIError.insecureBaseURL {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testReleaseAPIClientAcceptsHTTPSBaseURL() async {
+        let client = FinanceAPIClient(
+            baseURL: URL(string: "https://api.example.com"),
+            allowsDevelopmentSession: false
+        )
+
+        do {
+            _ = try await client.dashboard()
+            XCTFail("Expected a signed-in session to be required.")
+        } catch FinanceAPIError.developmentSessionUnavailable {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testMoneyValueDecodesExactDecimalStringFromAPI() throws {
         let data = Data("\"3500.000000\"".utf8)
         let amount = try JSONDecoder().decode(MoneyValue.self, from: data)

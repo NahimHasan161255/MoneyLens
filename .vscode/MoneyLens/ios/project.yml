@@ -11,6 +11,8 @@ settings:
     INFOPLIST_KEY_MoneyLensAPIBaseURL: $(MONEYLENS_API_BASE_URL)
     INFOPLIST_KEY_MoneyLensDevelopmentSessionEnabled: $(MONEYLENS_ENABLE_DEVELOPMENT_SESSION)
     INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking: YES
+    MONEYLENS_BUNDLE_IDENTIFIER: com.example.MoneyLens
+    MONEYLENS_RELEASE_API_BASE_URL: ""
 targets:
   MoneyLens:
     type: application
@@ -19,7 +21,7 @@ targets:
       - path: MoneyLens/Sources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.MoneyLens
+        PRODUCT_BUNDLE_IDENTIFIER: $(MONEYLENS_BUNDLE_IDENTIFIER)
         CODE_SIGN_ENTITLEMENTS: MoneyLens/MoneyLens.entitlements
         TARGETED_DEVICE_FAMILY: "1"
       configs:
@@ -27,7 +29,7 @@ targets:
           MONEYLENS_API_BASE_URL: http://127.0.0.1:3001
           MONEYLENS_ENABLE_DEVELOPMENT_SESSION: YES
         Release:
-          MONEYLENS_API_BASE_URL: ""
+          MONEYLENS_API_BASE_URL: $(MONEYLENS_RELEASE_API_BASE_URL)
           MONEYLENS_ENABLE_DEVELOPMENT_SESSION: NO
   MoneyLensTests:
     type: bundle.unit-test
@@ -38,7 +40,7 @@ targets:
       - target: MoneyLens
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.MoneyLensTests
+        PRODUCT_BUNDLE_IDENTIFIER: $(MONEYLENS_BUNDLE_IDENTIFIER).Tests
 schemes:
   MoneyLens:
     build:
