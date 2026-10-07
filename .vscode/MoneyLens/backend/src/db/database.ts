@@ -13,7 +13,11 @@ export interface QueryExecutor {
   ): Promise<QueryResult<Row>>;
 }
 
-export class PostgresDatabase implements DatabaseHealth, QueryExecutor {
+export interface TransactionalQueryExecutor extends QueryExecutor {
+  transaction<T>(operation: (executor: QueryExecutor) => Promise<T>): Promise<T>;
+}
+
+export class PostgresDatabase implements DatabaseHealth, TransactionalQueryExecutor {
   private readonly pool: Pool;
 
   constructor(connectionString: string, ssl: boolean) {
@@ -35,6 +39,32 @@ export class PostgresDatabase implements DatabaseHealth, QueryExecutor {
     values?: readonly unknown[]
   ): Promise<QueryResult<Row>> {
     return this.pool.query<Row>(text, values ? [...values] : []);
+  }
+
+  async transaction<T>(operation: (executor: QueryExecutor) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    const executor: QueryExecutor = {
+      query: <Row extends QueryResultRow = QueryResultRow>(
+        text: string,
+        values?: readonly unknown[]
+      ) => client.query<Row>(text, values ? [...values] : [])
+    };
+
+    try {
+      await client.query("BEGIN");
+      const result = await operation(executor);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], "Database transaction and rollback failed");
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async close(): Promise<void> {

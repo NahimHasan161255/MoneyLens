@@ -9,7 +9,7 @@ test("configuration applies safe development defaults", () => {
   });
 
   assert.equal(config.NODE_ENV, "development");
-  assert.equal(config.PORT, 3000);
+  assert.equal(config.PORT, 3001);
   assert.equal(config.DATABASE_SSL, false);
 });
 

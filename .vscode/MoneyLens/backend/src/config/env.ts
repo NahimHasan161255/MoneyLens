@@ -12,7 +12,7 @@ const environmentSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     HOST: z.string().min(1).default("127.0.0.1"),
-    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    PORT: z.coerce.number().int().min(1).max(65535).default(3001),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
     DATABASE_URL: z
       .string()
@@ -30,7 +30,9 @@ const environmentSchema = z
         const decoded = Buffer.from(value, "base64");
         return decoded.length === 32 && decoded.toString("base64") === value;
       }, "GOOGLE_OAUTH_ENCRYPTION_KEY must be a base64-encoded 32-byte key"),
-    GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION: optionalText
+    GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION: optionalText,
+    GMAIL_SEARCH_QUERY: z.string().trim().min(1).default("newer_than:365d {subject:ご利用 subject:利用}"),
+    GMAIL_MAX_MESSAGES_PER_SYNC: z.coerce.number().int().min(1).max(2000).default(500)
   })
   .superRefine((config, context) => {
     if (config.NODE_ENV === "production" && !config.DATABASE_SSL) {

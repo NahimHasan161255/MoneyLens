@@ -43,7 +43,7 @@ From the repository root in PowerShell:
    ```
 
    The database is bound to `127.0.0.1` and persists in a named Docker volume.
-4. Install backend dependencies and apply both database migrations in order:
+4. Install backend dependencies and apply the four database migrations in order:
 
    ```powershell
    Set-Location backend
@@ -53,6 +53,10 @@ From the repository root in PowerShell:
    docker compose exec postgres psql -U moneylens -d moneylens -v ON_ERROR_STOP=1 -f /tmp/001_initial_schema.sql
    docker compose cp backend/src/db/migrations/002_app_sessions.sql postgres:/tmp/002_app_sessions.sql
    docker compose exec postgres psql -U moneylens -d moneylens -v ON_ERROR_STOP=1 -f /tmp/002_app_sessions.sql
+   docker compose cp backend/src/db/migrations/003_google_oauth_flows.sql postgres:/tmp/003_google_oauth_flows.sql
+   docker compose exec postgres psql -U moneylens -d moneylens -v ON_ERROR_STOP=1 -f /tmp/003_google_oauth_flows.sql
+   docker compose cp backend/src/db/migrations/004_sync_run_lock.sql postgres:/tmp/004_sync_run_lock.sql
+   docker compose exec postgres psql -U moneylens -d moneylens -v ON_ERROR_STOP=1 -f /tmp/004_sync_run_lock.sql
    ```
 
    If you changed `POSTGRES_USER` or `POSTGRES_DB`, use those values in the
@@ -69,12 +73,12 @@ From the repository root in PowerShell:
 Production configuration requires PostgreSQL TLS; set `DATABASE_SSL=true` when
 connecting to a TLS-enabled database.
 
-The development API listens on port `3000` by default. In development only,
+The development API listens on port `3001` by default. In development only,
 `POST /v1/dev/session` with a JSON `{}` body issues a short-lived local test
 session; send its bearer token to the authenticated `/v1/categories`,
 `/v1/dashboard`, and `/v1/transactions` endpoints. This development-session
-endpoint is disabled in production and is not a substitute for the planned
-Google OAuth flow.
+endpoint is disabled in production and is only for local API development; Gmail
+OAuth separately links the user's Google account.
 
 Stop the database with `docker compose stop postgres`. To remove the database
 and its persisted local data, run `docker compose down -v`.
@@ -103,8 +107,9 @@ same Mac as the API; a physical device needs a reachable HTTPS development
 endpoint and a separately configured Debug API URL.
 
 The backend also provides session-protected categories, transaction listing,
-details, and category updates. Transaction category editing in the iOS UI,
-filters, and charts are added in later development phases.
+details, category updates, and Gmail sync endpoints. Transaction category
+editing in the iOS UI, filters, and charts are added in later development
+phases.
 
 ## Japanese transaction parser
 
@@ -113,8 +118,8 @@ card-notification parser. It recognizes common date, merchant, amount, and card
 labels; normalizes full-width Japanese text and digits; and extracts optional
 times and currencies. Unsupported messages return a safe reason code without
 including message text. Provider-specific parsers can be registered ahead of
-the generic parser. The parser accepts normalized text only; Gmail message retrieval and sync are
-not connected yet, and email bodies are not stored.
+the generic parser. The Gmail adapter supplies normalized message text to the parser in memory;
+email bodies are not stored.
 
 ## Gmail OAuth configuration
 
@@ -136,19 +141,25 @@ Gmail connection is disabled until the backend has all five
    Set the output as `GOOGLE_OAUTH_ENCRYPTION_KEY` and choose a version label
    such as `local-v1` for `GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION`. Never commit
    the generated key, Google client secret, or populated `.env`.
-4. Apply `backend/src/db/migrations/003_google_oauth_flows.sql` after migrations
-   001 and 002, then restart the API.
+4. Apply `backend/src/db/migrations/003_google_oauth_flows.sql` and
+   `backend/src/db/migrations/004_sync_run_lock.sql` after migrations 001 and
+   002, then restart the API.
 5. With a development bearer session, call `POST /v1/gmail/connect` and open
    its returned `authorizationUrl`. Google returns to the callback; inspect
    connection state through `GET /v1/gmail/connection`.
+6. Start a synchronization with `POST /v1/sync`. Configure
+   `GMAIL_SEARCH_QUERY` and `GMAIL_MAX_MESSAGES_PER_SYNC` to tune the initial
+   historical scan. Later syncs use Gmail history IDs and reconcile with the
+   search query if a stored Gmail history cursor expires.
 
 Only the `gmail.readonly` scope is requested. Google tokens remain on the
 backend, refresh tokens are AES-256-GCM encrypted at rest, and email contents
-are not stored. In production, inject the encryption key from an access-
-controlled secret manager, enforce HTTPS, register the public HTTPS callback,
-rotate versioned encryption keys safely, and finish Google OAuth restricted-
-scope verification before connecting user accounts. OAuth routes are ready,
-but Gmail message synchronization is still a subsequent step.
+are parsed in memory and are not stored. Message IDs are uniquely recorded per
+user; each message and its extracted transactions are persisted atomically, so
+repeat syncs do not create duplicates. In production, inject the encryption
+key from an access-controlled secret manager, enforce HTTPS, register the
+public HTTPS callback, rotate versioned encryption keys safely, and finish
+Google OAuth restricted-scope verification before connecting user accounts.
 
 ## Data and privacy foundations
 

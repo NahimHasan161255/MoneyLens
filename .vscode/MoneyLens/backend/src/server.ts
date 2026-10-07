@@ -7,8 +7,11 @@ const database = new PostgresDatabase(config.DATABASE_URL, config.DATABASE_SSL);
 const app = createApp(database, {
   logger: { level: config.LOG_LEVEL },
   queryExecutor: database,
+  transactionExecutor: database,
   environment: config.NODE_ENV,
-  googleOAuth: config.googleOAuth
+  googleOAuth: config.googleOAuth,
+  gmailSearchQuery: config.GMAIL_SEARCH_QUERY,
+  gmailMaxMessagesPerSync: config.GMAIL_MAX_MESSAGES_PER_SYNC
 });
 
 let shuttingDown = false;
