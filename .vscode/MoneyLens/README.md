@@ -86,10 +86,17 @@ then open `MoneyLens.xcodeproj` in Xcode and run the MoneyLens scheme on an iPho
 simulator. Replace the example bundle identifier and configure signing for a
 real device or distribution.
 
-The first iOS milestone is a navigable SwiftUI shell. The backend now provides
-session-protected categories, spending summaries, transaction listing and
-detail, and category updates. Gmail sync and iOS API integration are added in
-later development phases.
+The iOS app now fetches dashboard summaries and transaction history from the
+authenticated API. Its Debug configuration targets `http://127.0.0.1:3001` and
+uses the development-only session endpoint; the bearer token is stored in
+Keychain. Release builds have no API URL and cannot request a development
+session. The current default address is intended for the iOS simulator on the
+same Mac as the API; a physical device needs a reachable HTTPS development
+endpoint and a separately configured Debug API URL.
+
+The backend also provides session-protected categories, transaction listing,
+details, and category updates. Gmail OAuth/sync, transaction category editing
+in the iOS UI, filters, and charts are added in later development phases.
 
 ## Data and privacy foundations
 

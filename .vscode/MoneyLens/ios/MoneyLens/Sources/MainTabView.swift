@@ -16,45 +16,76 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .settings: "gearshape"
         }
     }
-
-    var description: String {
-        switch self {
-        case .dashboard: "Your spending overview will appear here."
-        case .transactions: "Your transaction history will appear here."
-        case .charts: "Your spending charts will appear here."
-        case .settings: "Account and app settings will appear here."
-        }
-    }
 }
 
 struct MainTabView: View {
+    @StateObject private var store = FinanceStore()
     @State private var selectedTab: AppTab = .dashboard
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ForEach(AppTab.allCases) { tab in
-                NavigationStack {
-                    ContentPlaceholder(tab: tab)
-                        .navigationTitle(tab.rawValue)
-                }
-                .tabItem {
-                    Label(tab.rawValue, systemImage: tab.symbol)
-                }
-                .tag(tab)
+            NavigationStack {
+                DashboardView()
+                    .navigationTitle("Dashboard")
             }
+            .tabItem {
+                Label(AppTab.dashboard.rawValue, systemImage: AppTab.dashboard.symbol)
+            }
+            .tag(AppTab.dashboard)
+
+            NavigationStack {
+                TransactionsView()
+                    .navigationTitle("Transactions")
+            }
+            .tabItem {
+                Label(AppTab.transactions.rawValue, systemImage: AppTab.transactions.symbol)
+            }
+            .tag(AppTab.transactions)
+
+            NavigationStack {
+                EmptyFeatureView(
+                    title: AppTab.charts.rawValue,
+                    symbol: AppTab.charts.symbol,
+                    description: "Spending charts are coming in a later step."
+                )
+                .navigationTitle(AppTab.charts.rawValue)
+            }
+            .tabItem {
+                Label(AppTab.charts.rawValue, systemImage: AppTab.charts.symbol)
+            }
+            .tag(AppTab.charts)
+
+            NavigationStack {
+                EmptyFeatureView(
+                    title: AppTab.settings.rawValue,
+                    symbol: AppTab.settings.symbol,
+                    description: "Account settings are coming in a later step."
+                )
+                .navigationTitle(AppTab.settings.rawValue)
+            }
+            .tabItem {
+                Label(AppTab.settings.rawValue, systemImage: AppTab.settings.symbol)
+            }
+            .tag(AppTab.settings)
         }
         .tint(.indigo)
+        .environmentObject(store)
+        .task {
+            await store.refresh()
+        }
     }
 }
 
-private struct ContentPlaceholder: View {
-    let tab: AppTab
+struct EmptyFeatureView: View {
+    let title: String
+    let symbol: String
+    let description: String
 
     var body: some View {
         ContentUnavailableView(
-            tab.rawValue,
-            systemImage: tab.symbol,
-            description: Text(tab.description)
+            title,
+            systemImage: symbol,
+            description: Text(description)
         )
     }
 }
