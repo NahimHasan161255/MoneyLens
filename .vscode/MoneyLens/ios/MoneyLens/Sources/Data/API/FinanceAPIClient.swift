@@ -220,7 +220,10 @@ actor FinanceAPIClient {
     }
 
     func hasSession() throws -> Bool {
-        allowsDevelopmentSession || (try keychain.load() != nil)
+        if allowsDevelopmentSession {
+            return true
+        }
+        return try keychain.load() != nil
     }
 
     func appleSignInNonce() async throws -> AppleSignInNonce {
