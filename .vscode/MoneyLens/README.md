@@ -111,10 +111,11 @@ disconnect controls. OAuth approval opens in the system browser; after Google
 returns the success page, return to Settings and pull to refresh the connection
 status. OAuth credentials must already be configured on the backend.
 
-The backend also provides session-protected categories, transaction listing,
-details, category updates, and Gmail sync endpoints. Transaction category
-editing in the iOS UI, filters, and charts are added in later development
-phases.
+The Transactions tab supports date-range, category, merchant, and card filters,
+and lets the user change a transaction's category. The Charts tab provides
+daily, weekly, or monthly spending trends and spending by category, with
+currencies shown separately. These views use the authenticated transaction,
+category, category-update, and chart APIs.
 
 ## Japanese transaction parser
 

@@ -38,6 +38,14 @@ const categoryUpdateSchema = z.object({
   categoryId: idSchema.nullable()
 });
 
+const chartQuerySchema = z.object({
+  period: z.enum(["daily", "weekly", "monthly"]).default("daily"),
+  from: dateSchema.optional(),
+  to: dateSchema.optional()
+}).refine((value) => !value.from || !value.to || value.from <= value.to, {
+  message: "'from' must be on or before 'to'"
+});
+
 interface SessionRow {
   user_id: string;
 }
@@ -259,6 +267,90 @@ export function registerUserRoutes(
         last30Days: row.last_30_days,
         thisMonth: row.this_month,
         lastMonth: row.last_month
+      }))
+    };
+  });
+
+  app.get("/v1/charts", async (request, reply) => {
+    const userId = request.userId;
+    if (!userId) {
+      return unauthorized(reply);
+    }
+
+    const parsedQuery = chartQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      return badRequest(reply, parsedQuery.error.issues[0]?.message ?? "Invalid chart parameters");
+    }
+
+    const { period, from, to } = parsedQuery.data;
+    const periodExpression = {
+      daily: "t.transaction_date",
+      weekly: "date_trunc('week', t.transaction_date::timestamp)::date",
+      monthly: "date_trunc('month', t.transaction_date::timestamp)::date"
+    }[period];
+    const range = await database.query<{ from_date: string; to_date: string }>(
+      `SELECT
+         COALESCE($2::date, (now() AT TIME ZONE u.timezone)::date - 29)::text AS from_date,
+         COALESCE($3::date, (now() AT TIME ZONE u.timezone)::date)::text AS to_date
+       FROM users u
+       WHERE u.id = $1`,
+      [userId, from ?? null, to ?? null]
+    );
+    const chartRange = range.rows[0];
+    if (!chartRange) {
+      return reply.code(404).send({ error: "Account not found" });
+    }
+
+    const [series, categories] = await Promise.all([
+      database.query<{
+        period_start: string;
+        currency: string;
+        amount: string;
+      }>(
+        `SELECT ${periodExpression}::text AS period_start,
+                t.currency, sum(t.amount)::text AS amount
+         FROM transactions t
+         WHERE t.user_id = $1
+           AND t.transaction_date BETWEEN $2::date AND $3::date
+         GROUP BY period_start, t.currency
+         ORDER BY period_start, t.currency`,
+        [userId, chartRange.from_date, chartRange.to_date]
+      ),
+      database.query<{
+        category_id: string | null;
+        category_name: string | null;
+        currency: string;
+        amount: string;
+      }>(
+        `SELECT t.category_id,
+                c.name AS category_name,
+                t.currency, sum(t.amount)::text AS amount
+         FROM transactions t
+         LEFT JOIN categories c
+           ON c.id = t.category_id
+          AND (c.user_id IS NULL OR c.user_id = t.user_id)
+         WHERE t.user_id = $1
+           AND t.transaction_date BETWEEN $2::date AND $3::date
+         GROUP BY t.category_id, c.name, t.currency
+         ORDER BY t.currency, amount DESC`,
+        [userId, chartRange.from_date, chartRange.to_date]
+      )
+    ]);
+
+    return {
+      period,
+      from: chartRange.from_date,
+      to: chartRange.to_date,
+      series: series.rows.map((row) => ({
+        date: row.period_start,
+        currency: row.currency.trim(),
+        amount: row.amount
+      })),
+      categories: categories.rows.map((row) => ({
+        categoryId: row.category_id,
+        category: row.category_name ?? "Other",
+        currency: row.currency.trim(),
+        amount: row.amount
       }))
     };
   });

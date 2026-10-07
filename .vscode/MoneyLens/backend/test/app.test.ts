@@ -110,6 +110,75 @@ test("user data endpoints reject requests without a valid session", async (conte
   assert.deepEqual(response.json(), { error: "Authentication required" });
 });
 
+test("charts endpoint requires an authenticated session", async (context) => {
+  const database: DatabaseHealth = {
+    async ping() {},
+    async close() {}
+  };
+  const app = createApp(database, {
+    logger: false,
+    queryExecutor: emptyQueryExecutor(),
+    environment: "development"
+  });
+  context.after(() => app.close());
+
+  const response = await app.inject({ method: "GET", url: "/v1/charts?period=daily" });
+
+  assert.equal(response.statusCode, 401);
+});
+
+test("charts endpoint rejects invalid periods and reversed date ranges", async (context) => {
+  const database: DatabaseHealth = {
+    async ping() {},
+    async close() {}
+  };
+  const queryExecutor: QueryExecutor = {
+    async query<Row extends import("pg").QueryResultRow = import("pg").QueryResultRow>(
+      text: string
+    ) {
+      if (text.includes("FROM app_sessions")) {
+        return {
+          command: "SELECT",
+          rowCount: 1,
+          oid: 0,
+          fields: [],
+          rows: JSON.parse(
+            '[{"user_id":"37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"}]'
+          ) as Row[]
+        };
+      }
+      return {
+        command: "SELECT",
+        rowCount: 0,
+        oid: 0,
+        fields: [],
+        rows: []
+      };
+    }
+  };
+  const app = createApp(database, {
+    logger: false,
+    queryExecutor,
+    environment: "development"
+  });
+  context.after(() => app.close());
+  const headers = { authorization: `Bearer ${"x".repeat(43)}` };
+
+  const invalidPeriod = await app.inject({
+    method: "GET",
+    url: "/v1/charts?period=yearly",
+    headers
+  });
+  const reversedDates = await app.inject({
+    method: "GET",
+    url: "/v1/charts?from=2026-10-10&to=2026-10-01",
+    headers
+  });
+
+  assert.equal(invalidPeriod.statusCode, 400);
+  assert.equal(reversedDates.statusCode, 400);
+});
+
 test("development session endpoint is unavailable outside development", async (context) => {
   const database: DatabaseHealth = {
     async ping() {},

@@ -43,11 +43,7 @@ struct MainTabView: View {
             .tag(AppTab.transactions)
 
             NavigationStack {
-                EmptyFeatureView(
-                    title: AppTab.charts.rawValue,
-                    symbol: AppTab.charts.symbol,
-                    description: "Spending charts are coming in a later step."
-                )
+                ChartsView()
                 .navigationTitle(AppTab.charts.rawValue)
             }
             .tabItem {

@@ -38,6 +38,55 @@ struct TransactionPage: Decodable {
     let offset: Int
 }
 
+struct TransactionCategory: Decodable, Identifiable {
+    let id: UUID
+    let slug: String
+    let name: String
+    let isDefault: Bool
+}
+
+struct TransactionCategoriesResponse: Decodable {
+    let items: [TransactionCategory]
+}
+
+struct CategoryUpdateRequest: Encodable {
+    let categoryId: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case categoryId
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(categoryId, forKey: .categoryId)
+    }
+}
+
+struct SpendingCharts: Decodable {
+    let period: String
+    let from: String
+    let to: String
+    let series: [SpendingChartPoint]
+    let categories: [CategorySpending]
+}
+
+struct SpendingChartPoint: Decodable, Identifiable {
+    let date: String
+    let currency: String
+    let amount: MoneyValue
+
+    var id: String { "\(date)-\(currency)" }
+}
+
+struct CategorySpending: Decodable, Identifiable {
+    let categoryId: UUID?
+    let category: String
+    let currency: String
+    let amount: MoneyValue
+
+    var id: String { "\(categoryId?.uuidString ?? "other")-\(currency)" }
+}
+
 struct FinanceTransaction: Decodable, Identifiable {
     let id: UUID
     let date: String
@@ -157,6 +206,26 @@ actor FinanceAPIClient {
     }
 
     func transactions(limit: Int = 50, offset: Int = 0) async throws -> TransactionPage {
+        try await transactions(
+            limit: limit,
+            offset: offset,
+            from: nil,
+            to: nil,
+            categoryId: nil,
+            merchant: nil,
+            cardName: nil
+        )
+    }
+
+    func transactions(
+        limit: Int,
+        offset: Int,
+        from: String?,
+        to: String?,
+        categoryId: UUID?,
+        merchant: String?,
+        cardName: String?
+    ) async throws -> TransactionPage {
         guard var components = URLComponents(
             url: try endpoint("/v1/transactions"),
             resolvingAgainstBaseURL: false
@@ -164,15 +233,55 @@ actor FinanceAPIClient {
             throw FinanceAPIError.invalidResponse
         }
 
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "offset", value: String(offset))
         ]
+        if let from { queryItems.append(URLQueryItem(name: "from", value: from)) }
+        if let to { queryItems.append(URLQueryItem(name: "to", value: to)) }
+        if let categoryId {
+            queryItems.append(URLQueryItem(name: "categoryId", value: categoryId.uuidString))
+        }
+        if let merchant, !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "merchant", value: merchant))
+        }
+        if let cardName, !cardName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "cardName", value: cardName))
+        }
+        components.queryItems = queryItems
 
         guard let url = components.url else {
             throw FinanceAPIError.invalidResponse
         }
 
+        return try await send(url: url)
+    }
+
+    func categories() async throws -> [TransactionCategory] {
+        let response: TransactionCategoriesResponse = try await get("/v1/categories")
+        return response.items
+    }
+
+    func charts(
+        period: String,
+        from: String?,
+        to: String?
+    ) async throws -> SpendingCharts {
+        guard var components = URLComponents(
+            url: try endpoint("/v1/charts"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw FinanceAPIError.invalidResponse
+        }
+
+        var queryItems = [URLQueryItem(name: "period", value: period)]
+        if let from { queryItems.append(URLQueryItem(name: "from", value: from)) }
+        if let to { queryItems.append(URLQueryItem(name: "to", value: to)) }
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw FinanceAPIError.invalidResponse
+        }
         return try await send(url: url)
     }
 
@@ -200,6 +309,18 @@ actor FinanceAPIClient {
         try await send(
             url: endpoint("/v1/gmail/connection"),
             method: "DELETE"
+        )
+    }
+
+    func updateCategory(
+        transactionId: UUID,
+        categoryId: UUID?
+    ) async throws -> FinanceTransaction {
+        let body = try JSONEncoder().encode(CategoryUpdateRequest(categoryId: categoryId))
+        return try await send(
+            url: endpoint("/v1/transactions/\(transactionId.uuidString)"),
+            method: "PATCH",
+            body: body
         )
     }
 
