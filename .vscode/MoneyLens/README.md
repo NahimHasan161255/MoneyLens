@@ -86,6 +86,14 @@ then open `MoneyLens.xcodeproj` in Xcode and run the MoneyLens scheme on an iPho
 simulator. Replace the example bundle identifier and configure signing for a
 real device or distribution.
 
+## Continuous integration
+
+The GitHub Actions workflow at the repository root runs backend checks on Ubuntu
+and generates, builds, and tests the iOS app on a GitHub-hosted macOS runner.
+Push a branch or open a pull request to see the workflow result in the GitHub
+Actions tab. The iOS job selects an available iPhone simulator and uploads the
+Xcode result bundle for inspection.
+
 The iOS app now fetches dashboard summaries and transaction history from the
 authenticated API. Its Debug configuration targets `http://127.0.0.1:3001` and
 uses the development-only session endpoint; the bearer token is stored in

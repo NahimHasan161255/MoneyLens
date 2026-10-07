@@ -38,3 +38,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.MoneyLensTests
+schemes:
+  MoneyLens:
+    build:
+      targets:
+        MoneyLens: all
+    test:
+      targets:
+        - MoneyLensTests
