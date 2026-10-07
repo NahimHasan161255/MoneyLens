@@ -88,6 +88,47 @@ final class MoneyLensTests: XCTestCase {
         XCTAssertEqual(result.deletedCount, 3)
     }
 
+    func testAppleSignInNonceResponseDecodesOneTimeChallenge() throws {
+        let data = Data(
+            """
+            {
+              "nonce": "Bap4t7NRTXY7iGqa-DiPR5HP9d3n0sXoNlywE3PH7GI",
+              "expiresIn": 300
+            }
+            """.utf8
+        )
+        let result = try JSONDecoder().decode(AppleSignInNonce.self, from: data)
+
+        XCTAssertEqual(result.expiresIn, 300)
+        XCTAssertEqual(result.nonce.count, 43)
+    }
+
+    func testAccountDeletionDecodesGoogleRevocationStatus() throws {
+        let data = Data(
+            "{\"deleted\":true,\"googleRevocation\":\"revoked\"}".utf8
+        )
+        let result = try JSONDecoder().decode(AccountDeletionResponse.self, from: data)
+
+        XCTAssertTrue(result.deleted)
+        XCTAssertEqual(result.googleRevocation, "revoked")
+    }
+
+    func testAppSessionResponseDecodesBearerToken() throws {
+        let data = Data(
+            """
+            {
+              "accessToken": "Bap4t7NRTXY7iGqa-DiPR5HP9d3n0sXoNlywE3PH7GI",
+              "tokenType": "Bearer",
+              "expiresIn": 604800
+            }
+            """.utf8
+        )
+        let result = try JSONDecoder().decode(AppSessionResponse.self, from: data)
+
+        XCTAssertEqual(result.tokenType, "Bearer")
+        XCTAssertEqual(result.expiresIn, 604800)
+    }
+
     func testGmailSyncResponseDecodesServerCounts() throws {
         let data = Data(
             """

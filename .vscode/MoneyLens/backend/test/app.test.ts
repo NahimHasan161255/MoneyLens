@@ -110,6 +110,68 @@ test("user data endpoints reject requests without a valid session", async (conte
   assert.deepEqual(response.json(), { error: "Authentication required" });
 });
 
+test("session revocation requires an authenticated session", async (context) => {
+  const app = createApp({ async ping() {}, async close() {} }, {
+    logger: false,
+    queryExecutor: emptyQueryExecutor(),
+    environment: "test"
+  });
+  context.after(() => app.close());
+
+  const response = await app.inject({ method: "DELETE", url: "/v1/session" });
+
+  assert.equal(response.statusCode, 401);
+});
+
+test("session revocation only revokes the current user's presented token", async (context) => {
+  let revokedValues: readonly unknown[] = [];
+  const queryExecutor: QueryExecutor = {
+    async query<Row extends import("pg").QueryResultRow = import("pg").QueryResultRow>(
+      text: string,
+      values: readonly unknown[] = []
+    ) {
+      if (text.includes("FROM app_sessions")) {
+        return {
+          command: "SELECT",
+          rowCount: 1,
+          oid: 0,
+          fields: [],
+          rows: JSON.parse(
+            '[{"user_id":"37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"}]'
+          ) as Row[]
+        };
+      }
+      assert.match(text, /WHERE user_id = \$1 AND token_hash = \$2/);
+      revokedValues = values;
+      return {
+        command: "UPDATE",
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+        rows: []
+      };
+    }
+  };
+  const app = createApp({ async ping() {}, async close() {} }, {
+    logger: false,
+    queryExecutor,
+    environment: "test"
+  });
+  context.after(() => app.close());
+  const token = "x".repeat(43);
+
+  const response = await app.inject({
+    method: "DELETE",
+    url: "/v1/session",
+    headers: { authorization: `Bearer ${token}` }
+  });
+
+  assert.equal(response.statusCode, 204);
+  assert.equal(revokedValues[0], "37ead7aa-8b11-4b64-bbdd-f36e6ca7a323");
+  assert.equal(Buffer.isBuffer(revokedValues[1]), true);
+  assert.equal((revokedValues[1] as Buffer).length, 32);
+});
+
 test("charts endpoint requires an authenticated session", async (context) => {
   const database: DatabaseHealth = {
     async ping() {},
@@ -309,6 +371,57 @@ test("delete all transactions requires a session and only deletes that user's re
   assert.deepEqual(response.json(), { deletedCount: 3 });
   assert.match(deleteQuery, /^DELETE FROM transactions WHERE user_id = \$1$/);
   assert.deepEqual(deleteValues, ["37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"]);
+});
+
+test("account deletion requires a session and deletes only the authenticated account", async (context) => {
+  const statements: string[] = [];
+  let accountDeleteValues: readonly unknown[] = [];
+  const queryExecutor: QueryExecutor = {
+    async query<Row extends import("pg").QueryResultRow = import("pg").QueryResultRow>(
+      text: string,
+      values: readonly unknown[] = []
+    ) {
+      statements.push(text);
+      if (text.includes("FROM app_sessions")) {
+        return {
+          command: "SELECT",
+          rowCount: 1,
+          oid: 0,
+          fields: [],
+          rows: JSON.parse(
+            '[{"user_id":"37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"}]'
+          ) as Row[]
+        };
+      }
+      if (text.includes("FROM oauth_connections")) {
+        return { command: "SELECT", rowCount: 0, oid: 0, fields: [], rows: [] };
+      }
+      accountDeleteValues = values;
+      return { command: "DELETE", rowCount: 1, oid: 0, fields: [], rows: [] };
+    }
+  };
+  const app = createApp({ async ping() {}, async close() {} }, {
+    logger: false,
+    queryExecutor,
+    environment: "test"
+  });
+  context.after(() => app.close());
+
+  const unauthenticated = await app.inject({ method: "DELETE", url: "/v1/account" });
+  const response = await app.inject({
+    method: "DELETE",
+    url: "/v1/account",
+    headers: { authorization: `Bearer ${"x".repeat(43)}` }
+  });
+
+  assert.equal(unauthenticated.statusCode, 401);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    deleted: true,
+    googleRevocation: "not_connected"
+  });
+  assert.match(statements.at(-1) ?? "", /^DELETE FROM users WHERE id = \$1$/);
+  assert.deepEqual(accountDeleteValues, ["37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"]);
 });
 
 test("development session endpoint is unavailable outside development", async (context) => {

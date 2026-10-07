@@ -8,6 +8,7 @@ import type {
   TransactionalQueryExecutor
 } from "./db/database.js";
 import { registerGoogleOAuthRoutes } from "./auth/google-oauth-routes.js";
+import { registerAppleSignInRoutes } from "./auth/apple-sign-in-routes.js";
 import { registerGmailSyncRoutes } from "./gmail/sync-routes.js";
 import { registerUserRoutes } from "./transactions/routes.js";
 
@@ -19,6 +20,7 @@ export function createApp(
     transactionExecutor?: TransactionalQueryExecutor;
     environment?: "development" | "test" | "production";
     googleOAuth?: GoogleOAuthConfig | null;
+    appleSignInAudience?: string | undefined;
     gmailSearchQuery?: string;
     gmailMaxMessagesPerSync?: number;
     googleFetch?: typeof fetch;
@@ -57,6 +59,13 @@ export function createApp(
     );
   }
   if (options.transactionExecutor) {
+    registerAppleSignInRoutes(
+      app,
+      options.queryExecutor ?? options.transactionExecutor,
+      options.transactionExecutor,
+      options.appleSignInAudience,
+      options.googleFetch ?? fetch
+    );
     registerGmailSyncRoutes(
       app,
       options.transactionExecutor,

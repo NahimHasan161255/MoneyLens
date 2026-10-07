@@ -5,6 +5,8 @@ struct SettingsView: View {
     @EnvironmentObject private var store: FinanceStore
     @Environment(\.openURL) private var openURL
     @State private var isConfirmingDisconnect = false
+    @State private var isConfirmingSignOut = false
+    @State private var isConfirmingAccountDeletion = false
     @State private var isConfirmingDataDeletion = false
     @State private var isShowingDeleteSuccess = false
     @State private var isExportingFile = false
@@ -54,6 +56,20 @@ struct SettingsView: View {
             } header: {
                 Text("Privacy")
             }
+
+            Section("Account") {
+                Button(role: .destructive) {
+                    isConfirmingSignOut = true
+                } label: {
+                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+
+                Button(role: .destructive) {
+                    isConfirmingAccountDeletion = true
+                } label: {
+                    Label("Delete MoneyLens account", systemImage: "person.crop.circle.badge.xmark")
+                }
+            }
         }
         .listStyle(.insetGrouped)
         .task {
@@ -97,6 +113,30 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("MoneyLens will remove its saved Gmail connection. Your existing transactions will remain.")
+        }
+        .confirmationDialog(
+            "Sign out of MoneyLens?",
+            isPresented: $isConfirmingSignOut,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out", role: .destructive) {
+                Task { await store.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your account and saved transactions will remain available when you sign in again.")
+        }
+        .confirmationDialog(
+            "Delete your MoneyLens account?",
+            isPresented: $isConfirmingAccountDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Delete account and data", role: .destructive) {
+                Task { await store.deleteAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your MoneyLens account, transactions, and saved Gmail authorization. It does not delete emails in Gmail.")
         }
         .confirmationDialog(
             "Delete all transaction data?",
@@ -173,6 +213,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+
                 }
             }
             .padding(.vertical, 4)

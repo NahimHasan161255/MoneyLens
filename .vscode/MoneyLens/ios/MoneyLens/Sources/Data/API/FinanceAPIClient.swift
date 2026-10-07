@@ -105,9 +105,14 @@ struct FinanceTransaction: Decodable, Identifiable {
     let updatedAt: Date
 }
 
-struct DevelopmentSession: Decodable {
+struct AppSessionResponse: Decodable {
     let accessToken: String
     let tokenType: String
+    let expiresIn: Int
+}
+
+struct AppleSignInNonce: Decodable {
+    let nonce: String
     let expiresIn: Int
 }
 
@@ -136,6 +141,11 @@ struct GmailDisconnectResponse: Decodable {
     let googleRevocation: String
 }
 
+struct AccountDeletionResponse: Decodable {
+    let deleted: Bool
+    let googleRevocation: String
+}
+
 enum FinanceAPIError: LocalizedError {
     case missingBaseURL
     case developmentSessionUnavailable
@@ -148,11 +158,11 @@ enum FinanceAPIError: LocalizedError {
         case .missingBaseURL:
             "The API address is not configured for this build."
         case .developmentSessionUnavailable:
-            "Sign in is not available yet. Connect a Google account in a later app update."
+            "App sign-in is not available in this build."
         case .invalidResponse:
             "The server returned an invalid response."
         case .unauthorized:
-            "Your session expired. Try refreshing to sign in again."
+            "Your session expired. Sign in again to continue."
         case let .server(statusCode, message):
             "The server returned \(statusCode): \(message)"
         }
@@ -207,6 +217,53 @@ actor FinanceAPIClient {
 
     func dashboard() async throws -> DashboardResponse {
         try await get("/v1/dashboard")
+    }
+
+    func hasSession() throws -> Bool {
+        allowsDevelopmentSession || (try keychain.load() != nil)
+    }
+
+    func appleSignInNonce() async throws -> AppleSignInNonce {
+        try await sendPublic(
+            url: endpoint("/v1/auth/apple/nonce"),
+            method: "POST",
+            body: Data("{}".utf8)
+        )
+    }
+
+    func signInWithApple(identityToken: String, nonce: String) async throws {
+        let body = try JSONEncoder().encode(AppleSignInRequest(
+            identityToken: identityToken,
+            nonce: nonce
+        ))
+        let session: AppSessionResponse = try await sendPublic(
+            url: endpoint("/v1/auth/apple"),
+            method: "POST",
+            body: body
+        )
+        guard session.tokenType == "Bearer",
+              session.accessToken.count == 43,
+              session.expiresIn > 0 else {
+            throw FinanceAPIError.invalidResponse
+        }
+        try keychain.save(session.accessToken)
+    }
+
+    func signOut() async throws {
+        guard let token = try keychain.load() else { return }
+        try keychain.delete()
+
+        let response = try await perform(
+            url: endpoint("/v1/session"),
+            token: token,
+            method: "DELETE",
+            body: nil
+        )
+        guard response.statusCode == 204 || response.statusCode == 401 else {
+            let message = (try? decoder.decode(APIErrorResponse.self, from: response.data).error)
+                ?? "Request failed."
+            throw FinanceAPIError.server(statusCode: response.statusCode, message: message)
+        }
     }
 
     func transactions(limit: Int = 50, offset: Int = 0) async throws -> TransactionPage {
@@ -324,6 +381,18 @@ actor FinanceAPIClient {
         )
     }
 
+    func deleteAccount() async throws -> AccountDeletionResponse {
+        let response: AccountDeletionResponse = try await send(
+            url: endpoint("/v1/account"),
+            method: "DELETE"
+        )
+        guard response.deleted else {
+            throw FinanceAPIError.invalidResponse
+        }
+        try keychain.delete()
+        return response
+    }
+
     func updateCategory(
         transactionId: UUID,
         categoryId: UUID?
@@ -338,6 +407,31 @@ actor FinanceAPIClient {
 
     private func get<Response: Decodable>(_ path: String) async throws -> Response {
         try await send(url: endpoint(path))
+    }
+
+    private func sendPublic<Response: Decodable>(
+        url: URL,
+        method: String,
+        body: Data
+    ) async throws -> Response {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        let (data, response) = try await urlSession.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw FinanceAPIError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let message = (try? decoder.decode(APIErrorResponse.self, from: data).error)
+                ?? "Request failed."
+            throw FinanceAPIError.server(statusCode: httpResponse.statusCode, message: message)
+        }
+        do {
+            return try decoder.decode(Response.self, from: data)
+        } catch {
+            throw FinanceAPIError.invalidResponse
+        }
     }
 
     private func endpoint(_ path: String) throws -> URL {
@@ -424,6 +518,11 @@ actor FinanceAPIClient {
         let error: String
     }
 
+    private struct AppleSignInRequest: Encodable {
+        let identityToken: String
+        let nonce: String
+    }
+
     private func accessToken() async throws -> String {
         if let token = try keychain.load() {
             return token
@@ -458,9 +557,9 @@ actor FinanceAPIClient {
             )
         }
 
-        let session: DevelopmentSession
+        let session: AppSessionResponse
         do {
-            session = try decoder.decode(DevelopmentSession.self, from: data)
+            session = try decoder.decode(AppSessionResponse.self, from: data)
         } catch {
             throw FinanceAPIError.invalidResponse
         }

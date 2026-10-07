@@ -158,11 +158,28 @@ export function registerUserRoutes(
     });
   });
 
+  app.delete("/v1/session", async (request, reply) => {
+    const userId = request.userId;
+    const token = bearerToken(request);
+    if (!userId || !token) {
+      return unauthorized(reply);
+    }
+    await database.query(
+      `UPDATE app_sessions
+       SET revoked_at = now()
+       WHERE user_id = $1 AND token_hash = $2 AND revoked_at IS NULL`,
+      [userId, hashToken(token)]
+    );
+    return reply.code(204).send();
+  });
+
   app.addHook("preHandler", async (request, reply) => {
     if (
       !request.routeOptions.url?.startsWith("/v1/")
       || request.routeOptions.url === "/v1/dev/session"
       || request.routeOptions.url === "/v1/oauth/google/callback"
+      || request.routeOptions.url === "/v1/auth/apple/nonce"
+      || request.routeOptions.url === "/v1/auth/apple"
     ) {
       return;
     }

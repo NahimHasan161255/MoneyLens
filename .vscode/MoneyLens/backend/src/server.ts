@@ -10,6 +10,7 @@ const app = createApp(database, {
   transactionExecutor: database,
   environment: config.NODE_ENV,
   googleOAuth: config.googleOAuth,
+  appleSignInAudience: config.APPLE_SIGN_IN_AUDIENCE,
   gmailSearchQuery: config.GMAIL_SEARCH_QUERY,
   gmailMaxMessagesPerSync: config.GMAIL_MAX_MESSAGES_PER_SYNC
 });

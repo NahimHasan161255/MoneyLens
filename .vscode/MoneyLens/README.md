@@ -43,7 +43,7 @@ From the repository root in PowerShell:
    ```
 
    The database is bound to `127.0.0.1` and persists in a named Docker volume.
-4. Install backend dependencies and apply the four database migrations in order:
+4. Install backend dependencies and apply all five database migrations in order:
 
    ```powershell
    Set-Location backend
@@ -57,6 +57,8 @@ From the repository root in PowerShell:
    docker compose exec postgres psql -U moneylens -d moneylens -v ON_ERROR_STOP=1 -f /tmp/003_google_oauth_flows.sql
    docker compose cp backend/src/db/migrations/004_sync_run_lock.sql postgres:/tmp/004_sync_run_lock.sql
    docker compose exec postgres psql -U moneylens -d moneylens -v ON_ERROR_STOP=1 -f /tmp/004_sync_run_lock.sql
+   docker compose cp backend/src/db/migrations/005_apple_sign_in.sql postgres:/tmp/005_apple_sign_in.sql
+   docker compose exec postgres psql -U moneylens -d moneylens -v ON_ERROR_STOP=1 -f /tmp/005_apple_sign_in.sql
    ```
 
    If you changed `POSTGRES_USER` or `POSTGRES_DB`, use those values in the
@@ -106,10 +108,20 @@ session. The current default address is intended for the iOS simulator on the
 same Mac as the API; a physical device needs a reachable HTTPS development
 endpoint and a separately configured Debug API URL.
 
-The Settings tab includes Gmail connection status, connect, manual sync, and
-disconnect controls. OAuth approval opens in the system browser; after Google
-returns the success page, return to Settings and pull to refresh the connection
-status. OAuth credentials must already be configured on the backend.
+The app uses Sign in with Apple for app accounts. Configure the Sign in with
+Apple capability for the App ID and provisioning profile, set
+`APPLE_SIGN_IN_AUDIENCE` on the API to the app's exact bundle identifier, and
+apply migration 005. Identity tokens are verified against Apple's rotating
+JWKS; short-lived, single-use nonces prevent replay, and only the Apple subject
+is stored. App bearer tokens are random, expire after seven days, and are stored
+hashed in PostgreSQL and in iOS Keychain. Debug builds retain the local-only
+development session path.
+
+The Settings tab includes Gmail connection status, connect, manual sync,
+disconnect, CSV export, delete-data, account deletion, and sign-out controls.
+OAuth approval opens in the system browser; after Google returns the success
+page, return to Settings and pull to refresh the connection status. OAuth
+credentials must already be configured on the backend.
 
 The Transactions tab supports date-range, category, merchant, and card filters,
 and lets the user change a transaction's category. The Charts tab provides
@@ -122,6 +134,10 @@ delete them. CSV exports omit Gmail message IDs and email contents and escape
 spreadsheet formula-like text. Deleting transactions keeps the Gmail connection
 and processed-message identifiers so a later sync does not recreate deleted
 records; this operation does not delete the user's Gmail messages.
+
+Apple sign-in and a protected production API URL require Apple Developer
+account setup, the Sign in with Apple capability, an actual app bundle
+identifier, and HTTPS API deployment before a Release build can sign in.
 
 ## Japanese transaction parser
 
@@ -153,8 +169,9 @@ Gmail connection is disabled until the backend has all five
    Set the output as `GOOGLE_OAUTH_ENCRYPTION_KEY` and choose a version label
    such as `local-v1` for `GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION`. Never commit
    the generated key, Google client secret, or populated `.env`.
-4. Apply `backend/src/db/migrations/003_google_oauth_flows.sql` and
-   `backend/src/db/migrations/004_sync_run_lock.sql` after migrations 001 and
+4. Apply `backend/src/db/migrations/003_google_oauth_flows.sql`,
+   `backend/src/db/migrations/004_sync_run_lock.sql`, and
+   `backend/src/db/migrations/005_apple_sign_in.sql` after migrations 001 and
    002, then restart the API.
 5. With a development bearer session, call `POST /v1/gmail/connect` and open
    its returned `authorizationUrl`. Google returns to the callback; inspect

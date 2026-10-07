@@ -25,6 +25,23 @@ test("production configuration requires PostgreSQL TLS", () => {
   );
 });
 
+test("production configuration requires an Apple sign-in audience", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        NODE_ENV: "production",
+        DATABASE_URL: "******db.example.com/moneylens",
+        DATABASE_SSL: "true",
+        GOOGLE_OAUTH_CLIENT_ID: "client-id",
+        GOOGLE_OAUTH_CLIENT_SECRET: "client-secret",
+        GOOGLE_OAUTH_REDIRECT_URI: "https://api.example.com/v1/oauth/google/callback",
+        GOOGLE_OAUTH_ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+        GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION: "test-v1"
+      }),
+    /APPLE_SIGN_IN_AUDIENCE is required in production/
+  );
+});
+
 test("configuration rejects non-PostgreSQL database URLs", () => {
   assert.throws(
     () => loadConfig({ DATABASE_URL: "https://db.example.com/moneylens" }),

@@ -20,6 +20,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.MoneyLens
+        CODE_SIGN_ENTITLEMENTS: MoneyLens/MoneyLens.entitlements
         TARGETED_DEVICE_FAMILY: "1"
       configs:
         Debug:

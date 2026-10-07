@@ -21,6 +21,7 @@ const environmentSchema = z
         message: "DATABASE_URL must use the postgres or postgresql protocol"
       }),
     DATABASE_SSL: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+    APPLE_SIGN_IN_AUDIENCE: optionalText,
     GOOGLE_OAUTH_CLIENT_ID: optionalText,
     GOOGLE_OAUTH_CLIENT_SECRET: optionalText,
     GOOGLE_OAUTH_REDIRECT_URI: optionalText.pipe(z.string().url().optional()),
@@ -40,6 +41,13 @@ const environmentSchema = z
         code: z.ZodIssueCode.custom,
         message: "DATABASE_SSL must be true in production",
         path: ["DATABASE_SSL"]
+      });
+    }
+    if (config.NODE_ENV === "production" && !config.APPLE_SIGN_IN_AUDIENCE) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "APPLE_SIGN_IN_AUDIENCE is required in production",
+        path: ["APPLE_SIGN_IN_AUDIENCE"]
       });
     }
 

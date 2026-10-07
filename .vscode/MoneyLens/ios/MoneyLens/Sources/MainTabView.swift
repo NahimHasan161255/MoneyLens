@@ -21,8 +21,43 @@ enum AppTab: String, CaseIterable, Identifiable {
 struct MainTabView: View {
     @StateObject private var store = FinanceStore()
     @State private var selectedTab: AppTab = .dashboard
+    @State private var isRestoringAuthentication = true
 
     var body: some View {
+        Group {
+            if isRestoringAuthentication {
+                ProgressView("Loading MoneyLens…")
+            } else if store.isAuthenticated {
+                mainTabs
+            } else {
+                AppleSignInView()
+            }
+        }
+        .tint(.indigo)
+        .environmentObject(store)
+        .alert(
+            "MoneyLens account deleted",
+            isPresented: Binding(
+                get: { store.accountDeletionGoogleRevocation != nil },
+                set: { if !$0 { store.dismissAccountDeletionNotice() } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                store.dismissAccountDeletionNotice()
+            }
+        } message: {
+            Text(accountDeletionMessage)
+        }
+        .task {
+            await store.restoreAuthentication()
+            isRestoringAuthentication = false
+            if store.isAuthenticated {
+                await store.refresh()
+            }
+        }
+    }
+
+    private var mainTabs: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
                 DashboardView()
@@ -44,7 +79,7 @@ struct MainTabView: View {
 
             NavigationStack {
                 ChartsView()
-                .navigationTitle(AppTab.charts.rawValue)
+                    .navigationTitle(AppTab.charts.rawValue)
             }
             .tabItem {
                 Label(AppTab.charts.rawValue, systemImage: AppTab.charts.symbol)
@@ -60,10 +95,20 @@ struct MainTabView: View {
             }
             .tag(AppTab.settings)
         }
-        .tint(.indigo)
-        .environmentObject(store)
-        .task {
-            await store.refresh()
+
+        private var accountDeletionMessage: String {
+            switch store.accountDeletionGoogleRevocation {
+            case .some("failed"):
+                "Your MoneyLens data was deleted, but Google could not confirm revoking Gmail access. Remove MoneyLens from your Google Account security settings."
+            case .some("unavailable"):
+                "Your MoneyLens data was deleted. Gmail access could not be revoked by the server; remove MoneyLens from your Google Account security settings."
+            case .some("revoked"):
+                "Your MoneyLens data was deleted and Gmail access was revoked. Your Gmail messages were not deleted."
+            case .some("not_connected"):
+                "Your MoneyLens account and saved data were deleted. Your Gmail messages were not deleted."
+            default:
+                ""
+            }
         }
     }
 }

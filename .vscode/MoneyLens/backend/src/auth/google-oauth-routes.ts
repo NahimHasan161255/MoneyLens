@@ -328,7 +328,8 @@ export function registerGoogleOAuthRoutes(
       const response = await fetcher(googleRevokeEndpoint, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ token: refreshToken })
+        body: new URLSearchParams({ token: refreshToken }),
+        signal: AbortSignal.timeout(5_000)
       });
 
       if (!response.ok) {
@@ -350,6 +351,66 @@ export function registerGoogleOAuthRoutes(
     }
 
     return { disconnected: true, googleRevocation: "revoked" };
+  });
+
+  app.delete("/v1/account", async (request, reply) => {
+    const userId = request.userId;
+    if (!userId) {
+      return reply.code(401).send({ error: "Authentication required" });
+    }
+
+    const connection = await database.query<ConnectedAccountRow>(
+      `SELECT id, encrypted_refresh_token, encryption_key_version
+       FROM oauth_connections
+       WHERE user_id = $1 AND provider = 'google'`,
+      [userId]
+    );
+    const stored = connection.rows[0];
+    let googleRevocation: "revoked" | "failed" | "unavailable" | "not_connected" =
+      stored ? "unavailable" : "not_connected";
+    let refreshToken: string | null = null;
+
+    if (stored && config && cipher) {
+      try {
+        refreshToken = cipher.decrypt({
+          ciphertext: stored.encrypted_refresh_token,
+          keyVersion: stored.encryption_key_version
+        });
+      } catch (error) {
+        googleRevocation = "failed";
+        request.log.error({ err: error }, "Could not decrypt Gmail token during account deletion");
+      }
+    }
+
+    const deletion = await database.query(
+      "DELETE FROM users WHERE id = $1",
+      [userId]
+    );
+    if (deletion.rowCount !== 1) {
+      return reply.code(404).send({ error: "Account not found" });
+    }
+
+    if (refreshToken) {
+      try {
+        const response = await fetcher(googleRevokeEndpoint, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ token: refreshToken }),
+          signal: AbortSignal.timeout(5_000)
+        });
+        googleRevocation = response.ok ? "revoked" : "failed";
+        if (!response.ok) {
+          request.log.error(
+            { statusCode: response.status },
+            "Google token revocation failed during account deletion"
+          );
+        }
+      } catch (error) {
+        googleRevocation = "failed";
+        request.log.error({ err: error }, "Google token revocation failed during account deletion");
+      }
+    }
+    return { deleted: true, googleRevocation };
   });
 }
 
