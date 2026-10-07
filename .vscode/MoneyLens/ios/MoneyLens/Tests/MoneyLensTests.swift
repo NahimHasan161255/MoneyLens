@@ -9,14 +9,12 @@ final class MoneyLensTests: XCTestCase {
         )
     }
 
-    func testReleaseAPIClientRejectsHTTPBeforeSendingRequests() async {
-        let client = FinanceAPIClient(
-            baseURL: URL(string: "http://api.example.com"),
-            allowsDevelopmentSession: false
-        )
-
+    func testReleaseAPIRejectsHTTPBaseURL() {
         do {
-            _ = try await client.dashboard()
+            _ = try FinanceAPIClient.validatedBaseURL(
+                URL(string: "http://api.example.com"),
+                allowsDevelopmentSession: false
+            )
             XCTFail("Expected an insecure API URL to be rejected.")
         } catch FinanceAPIError.insecureBaseURL {
         } catch {
@@ -24,16 +22,30 @@ final class MoneyLensTests: XCTestCase {
         }
     }
 
-    func testReleaseAPIClientAcceptsHTTPSBaseURL() async {
-        let client = FinanceAPIClient(
-            baseURL: URL(string: "https://api.example.com"),
+    func testReleaseAPIAcceptsHTTPSBaseURL() throws {
+        let url = try FinanceAPIClient.validatedBaseURL(
+            URL(string: "https://api.example.com"),
             allowsDevelopmentSession: false
         )
+        XCTAssertEqual(url.absoluteString, "https://api.example.com")
+    }
 
+    func testDevelopmentAPIAllowsLocalHTTPBaseURL() throws {
+        let url = try FinanceAPIClient.validatedBaseURL(
+            URL(string: "http://127.0.0.1:3001"),
+            allowsDevelopmentSession: true
+        )
+        XCTAssertEqual(url.absoluteString, "http://127.0.0.1:3001")
+    }
+
+    func testReleaseAPIRejectsMissingBaseURL() {
         do {
-            _ = try await client.dashboard()
-            XCTFail("Expected a signed-in session to be required.")
-        } catch FinanceAPIError.developmentSessionUnavailable {
+            _ = try FinanceAPIClient.validatedBaseURL(
+                nil,
+                allowsDevelopmentSession: false
+            )
+            XCTFail("Expected a missing API URL to be rejected.")
+        } catch FinanceAPIError.missingBaseURL {
         } catch {
             XCTFail("Unexpected error: \(error)")
         }

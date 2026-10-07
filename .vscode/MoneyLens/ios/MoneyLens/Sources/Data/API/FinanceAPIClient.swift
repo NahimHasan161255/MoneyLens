@@ -440,7 +440,10 @@ actor FinanceAPIClient {
         }
     }
 
-    private func endpoint(_ path: String) throws -> URL {
+    nonisolated static func validatedBaseURL(
+        _ baseURL: URL?,
+        allowsDevelopmentSession: Bool
+    ) throws -> URL {
         guard let baseURL else {
             throw FinanceAPIError.missingBaseURL
         }
@@ -451,7 +454,14 @@ actor FinanceAPIClient {
                 || (allowsDevelopmentSession && baseURL.scheme?.lowercased() == "http") else {
             throw FinanceAPIError.insecureBaseURL
         }
-        return baseURL.appending(path: path)
+        return baseURL
+    }
+
+    private func endpoint(_ path: String) throws -> URL {
+        try Self.validatedBaseURL(
+            baseURL,
+            allowsDevelopmentSession: allowsDevelopmentSession
+        ).appending(path: path)
     }
 
     private func send<Response: Decodable>(
