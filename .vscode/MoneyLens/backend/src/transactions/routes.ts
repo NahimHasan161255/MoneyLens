@@ -143,7 +143,11 @@ export function registerUserRoutes(
   });
 
   app.addHook("preHandler", async (request, reply) => {
-    if (!request.routeOptions.url?.startsWith("/v1/") || request.routeOptions.url === "/v1/dev/session") {
+    if (
+      !request.routeOptions.url?.startsWith("/v1/")
+      || request.routeOptions.url === "/v1/dev/session"
+      || request.routeOptions.url === "/v1/oauth/google/callback"
+    ) {
       return;
     }
 

@@ -103,8 +103,8 @@ same Mac as the API; a physical device needs a reachable HTTPS development
 endpoint and a separately configured Debug API URL.
 
 The backend also provides session-protected categories, transaction listing,
-details, and category updates. Gmail OAuth/sync, transaction category editing
-in the iOS UI, filters, and charts are added in later development phases.
+details, and category updates. Transaction category editing in the iOS UI,
+filters, and charts are added in later development phases.
 
 ## Japanese transaction parser
 
@@ -113,14 +113,48 @@ card-notification parser. It recognizes common date, merchant, amount, and card
 labels; normalizes full-width Japanese text and digits; and extracts optional
 times and currencies. Unsupported messages return a safe reason code without
 including message text. Provider-specific parsers can be registered ahead of
-the generic parser. The parser accepts normalized text only; Gmail retrieval
-and sync are not connected yet, and email bodies are not stored.
+the generic parser. The parser accepts normalized text only; Gmail message retrieval and sync are
+not connected yet, and email bodies are not stored.
+
+## Gmail OAuth configuration
+
+Gmail connection is disabled until the backend has all five
+`GOOGLE_OAUTH_*` settings. To enable it locally:
+
+1. In Google Cloud, enable the Gmail API and create an OAuth **Web application**
+   client. Add the exact local callback URI
+   `http://localhost:3001/v1/oauth/google/callback` to its authorized redirect
+   URIs and add your account as a test user on the consent screen.
+2. Copy the client ID and secret into the ignored `backend/.env` file. Set
+   `GOOGLE_OAUTH_REDIRECT_URI` to the callback registered in Google Cloud.
+3. Generate a local 32-byte encryption key:
+
+   ```powershell
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+   ```
+
+   Set the output as `GOOGLE_OAUTH_ENCRYPTION_KEY` and choose a version label
+   such as `local-v1` for `GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION`. Never commit
+   the generated key, Google client secret, or populated `.env`.
+4. Apply `backend/src/db/migrations/003_google_oauth_flows.sql` after migrations
+   001 and 002, then restart the API.
+5. With a development bearer session, call `POST /v1/gmail/connect` and open
+   its returned `authorizationUrl`. Google returns to the callback; inspect
+   connection state through `GET /v1/gmail/connection`.
+
+Only the `gmail.readonly` scope is requested. Google tokens remain on the
+backend, refresh tokens are AES-256-GCM encrypted at rest, and email contents
+are not stored. In production, inject the encryption key from an access-
+controlled secret manager, enforce HTTPS, register the public HTTPS callback,
+rotate versioned encryption keys safely, and finish Google OAuth restricted-
+scope verification before connecting user accounts. OAuth routes are ready,
+but Gmail message synchronization is still a subsequent step.
 
 ## Data and privacy foundations
 
-The initial PostgreSQL migration creates user, category, OAuth connection,
-processed-email, transaction, and sync tables. It retains extracted transaction
-fields and message IDs, not email bodies. Gmail OAuth is not enabled in Phase 1.
-Before Gmail integration is released, configure Google OAuth consent and
+The initial PostgreSQL migrations create user, category, OAuth connection,
+processed-email, transaction, sync, app-session, and OAuth-flow tables. They
+retain extracted transaction fields and message IDs, not email bodies. Before
+production Gmail integration is released, configure Google OAuth consent and
 verification for the restricted `gmail.readonly` scope, token encryption with
 managed keys, HTTPS callback/Universal Link domains, and privacy disclosures.

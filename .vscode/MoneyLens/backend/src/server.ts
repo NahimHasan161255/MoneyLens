@@ -7,7 +7,8 @@ const database = new PostgresDatabase(config.DATABASE_URL, config.DATABASE_SSL);
 const app = createApp(database, {
   logger: { level: config.LOG_LEVEL },
   queryExecutor: database,
-  environment: config.NODE_ENV
+  environment: config.NODE_ENV,
+  googleOAuth: config.googleOAuth
 });
 
 let shuttingDown = false;

@@ -31,3 +31,43 @@ test("configuration rejects non-PostgreSQL database URLs", () => {
     /DATABASE_URL must use the postgres or postgresql protocol/
   );
 });
+
+test("empty Google OAuth template values leave Gmail connection disabled", () => {
+  const config = loadConfig({
+    DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/moneylens",
+    GOOGLE_OAUTH_CLIENT_ID: "",
+    GOOGLE_OAUTH_CLIENT_SECRET: "",
+    GOOGLE_OAUTH_REDIRECT_URI: "",
+    GOOGLE_OAUTH_ENCRYPTION_KEY: "",
+    GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION: ""
+  });
+
+  assert.equal(config.googleOAuth, null);
+});
+
+test("configuration rejects a partially configured Google OAuth connection", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/moneylens",
+        GOOGLE_OAUTH_CLIENT_ID: "client-id"
+      }),
+    /Google OAuth client, callback, and token-encryption settings must be configured together/
+  );
+});
+
+test("configuration rejects insecure non-local OAuth callback URLs outside development", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        NODE_ENV: "test",
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/moneylens",
+        GOOGLE_OAUTH_CLIENT_ID: "client-id",
+        GOOGLE_OAUTH_CLIENT_SECRET: "client-secret",
+        GOOGLE_OAUTH_REDIRECT_URI: "http://api.example.com/oauth/callback",
+        GOOGLE_OAUTH_ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+        GOOGLE_OAUTH_ENCRYPTION_KEY_VERSION: "test-v1"
+      }),
+    /Google OAuth callback URI must use HTTPS outside development/
+  );
+});

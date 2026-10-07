@@ -1,7 +1,9 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { FastifyLoggerOptions } from "fastify";
 
+import type { GoogleOAuthConfig } from "./config/env.js";
 import type { DatabaseHealth, QueryExecutor } from "./db/database.js";
+import { registerGoogleOAuthRoutes } from "./auth/google-oauth-routes.js";
 import { registerUserRoutes } from "./transactions/routes.js";
 
 export function createApp(
@@ -10,6 +12,8 @@ export function createApp(
     logger?: boolean | FastifyLoggerOptions;
     queryExecutor?: QueryExecutor;
     environment?: "development" | "test" | "production";
+    googleOAuth?: GoogleOAuthConfig | null;
+    googleFetch?: typeof fetch;
   } = {}
 ): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? true });
@@ -37,6 +41,12 @@ export function createApp(
 
   if (options.queryExecutor) {
     registerUserRoutes(app, options.queryExecutor, options.environment ?? "production");
+    registerGoogleOAuthRoutes(
+      app,
+      options.queryExecutor,
+      options.googleOAuth ?? null,
+      options.googleFetch ?? fetch
+    );
   }
 
   return app;
