@@ -1,11 +1,16 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { FastifyLoggerOptions } from "fastify";
 
-import type { DatabaseHealth } from "./db/database.js";
+import type { DatabaseHealth, QueryExecutor } from "./db/database.js";
+import { registerUserRoutes } from "./transactions/routes.js";
 
 export function createApp(
   database: DatabaseHealth,
-  options: { logger?: boolean | FastifyLoggerOptions } = {}
+  options: {
+    logger?: boolean | FastifyLoggerOptions;
+    queryExecutor?: QueryExecutor;
+    environment?: "development" | "test" | "production";
+  } = {}
 ): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? true });
 
@@ -29,6 +34,10 @@ export function createApp(
       return reply.code(503).send({ status: "unavailable" });
     }
   });
+
+  if (options.queryExecutor) {
+    registerUserRoutes(app, options.queryExecutor, options.environment ?? "production");
+  }
 
   return app;
 }

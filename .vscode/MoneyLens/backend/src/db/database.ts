@@ -1,11 +1,19 @@
 import { Pool } from "pg";
+import type { QueryResult, QueryResultRow } from "pg";
 
 export interface DatabaseHealth {
   ping(): Promise<void>;
   close(): Promise<void>;
 }
 
-export class PostgresDatabase implements DatabaseHealth {
+export interface QueryExecutor {
+  query<Row extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values?: readonly unknown[]
+  ): Promise<QueryResult<Row>>;
+}
+
+export class PostgresDatabase implements DatabaseHealth, QueryExecutor {
   private readonly pool: Pool;
 
   constructor(connectionString: string, ssl: boolean) {
@@ -20,6 +28,13 @@ export class PostgresDatabase implements DatabaseHealth {
 
   async ping(): Promise<void> {
     await this.pool.query("SELECT 1");
+  }
+
+  async query<Row extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values?: readonly unknown[]
+  ): Promise<QueryResult<Row>> {
+    return this.pool.query<Row>(text, values ? [...values] : []);
   }
 
   async close(): Promise<void> {

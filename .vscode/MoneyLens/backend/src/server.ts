@@ -4,7 +4,11 @@ import { PostgresDatabase } from "./db/database.js";
 
 const config = loadConfig();
 const database = new PostgresDatabase(config.DATABASE_URL, config.DATABASE_SSL);
-const app = createApp(database, { logger: { level: config.LOG_LEVEL } });
+const app = createApp(database, {
+  logger: { level: config.LOG_LEVEL },
+  queryExecutor: database,
+  environment: config.NODE_ENV
+});
 
 let shuttingDown = false;
 
