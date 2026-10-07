@@ -179,6 +179,138 @@ test("charts endpoint rejects invalid periods and reversed date ranges", async (
   assert.equal(reversedDates.statusCode, 400);
 });
 
+test("transaction export requires an authenticated session", async (context) => {
+  const database: DatabaseHealth = {
+    async ping() {},
+    async close() {}
+  };
+  const app = createApp(database, {
+    logger: false,
+    queryExecutor: emptyQueryExecutor(),
+    environment: "development"
+  });
+  context.after(() => app.close());
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/v1/transactions/export"
+  });
+
+  assert.equal(response.statusCode, 401);
+});
+
+test("transaction export is user-scoped and protects spreadsheet formula cells", async (context) => {
+  let exportQuery = "";
+  let exportValues: readonly unknown[] = [];
+  const queryExecutor: QueryExecutor = {
+    async query<Row extends import("pg").QueryResultRow = import("pg").QueryResultRow>(
+      text: string,
+      values: readonly unknown[] = []
+    ) {
+      if (text.includes("FROM app_sessions")) {
+        return {
+          command: "SELECT",
+          rowCount: 1,
+          oid: 0,
+          fields: [],
+          rows: JSON.parse(
+            '[{"user_id":"37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"}]'
+          ) as Row[]
+        };
+      }
+      exportQuery = text;
+      exportValues = values;
+      return {
+        command: "SELECT",
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+        rows: JSON.parse(
+          '[{"transaction_date":"2026-10-05","transaction_time":null,'
+            + '"merchant":"=HYPERLINK(\\"https://example.invalid\\")",'
+            + '"amount":"3500.000000","currency":"JPY ",'
+            + '"category_name":"Shopping","card_name":null}]'
+        ) as Row[]
+      };
+    }
+  };
+  const app = createApp({ async ping() {}, async close() {} }, {
+    logger: false,
+    queryExecutor,
+    environment: "development"
+  });
+  context.after(() => app.close());
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/v1/transactions/export",
+    headers: { authorization: `Bearer ${"x".repeat(43)}` }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(response.headers["content-type"] ?? "", /text\/csv/);
+  assert.match(response.headers["content-disposition"] ?? "", /moneylens-transactions\.csv/);
+  assert.equal(response.body.startsWith("\uFEFFdate,time,merchant,amount"), true);
+  assert.match(response.body, /"'=HYPERLINK\(""https:\/\/example\.invalid""\)"/);
+  assert.match(response.body, /"3500\.000000","JPY","Shopping"/);
+  assert.match(exportQuery, /WHERE t\.user_id = \$1/);
+  assert.deepEqual(exportValues, ["37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"]);
+});
+
+test("delete all transactions requires a session and only deletes that user's records", async (context) => {
+  let deleteQuery = "";
+  let deleteValues: readonly unknown[] = [];
+  const queryExecutor: QueryExecutor = {
+    async query<Row extends import("pg").QueryResultRow = import("pg").QueryResultRow>(
+      text: string,
+      values: readonly unknown[] = []
+    ) {
+      if (text.includes("FROM app_sessions")) {
+        return {
+          command: "SELECT",
+          rowCount: 1,
+          oid: 0,
+          fields: [],
+          rows: JSON.parse(
+            '[{"user_id":"37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"}]'
+          ) as Row[]
+        };
+      }
+      deleteQuery = text;
+      deleteValues = values;
+      return {
+        command: "DELETE",
+        rowCount: 3,
+        oid: 0,
+        fields: [],
+        rows: []
+      };
+    }
+  };
+  const app = createApp({ async ping() {}, async close() {} }, {
+    logger: false,
+    queryExecutor,
+    environment: "development"
+  });
+  context.after(() => app.close());
+
+  const unauthorizedResponse = await app.inject({
+    method: "DELETE",
+    url: "/v1/transactions"
+  });
+  const response = await app.inject({
+    method: "DELETE",
+    url: "/v1/transactions",
+    headers: { authorization: `Bearer ${"x".repeat(43)}` }
+  });
+
+  assert.equal(unauthorizedResponse.statusCode, 401);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { deletedCount: 3 });
+  assert.match(deleteQuery, /^DELETE FROM transactions WHERE user_id = \$1$/);
+  assert.deepEqual(deleteValues, ["37ead7aa-8b11-4b64-bbdd-f36e6ca7a323"]);
+});
+
 test("development session endpoint is unavailable outside development", async (context) => {
   const database: DatabaseHealth = {
     async ping() {},

@@ -38,6 +38,10 @@ struct TransactionPage: Decodable {
     let offset: Int
 }
 
+struct DeleteTransactionsResponse: Decodable {
+    let deletedCount: Int
+}
+
 struct TransactionCategory: Decodable, Identifiable {
     let id: UUID
     let slug: String
@@ -285,6 +289,14 @@ actor FinanceAPIClient {
         return try await send(url: url)
     }
 
+    func exportTransactions() async throws -> Data {
+        try await responseData(url: endpoint("/v1/transactions/export"))
+    }
+
+    func deleteAllTransactions() async throws -> DeleteTransactionsResponse {
+        try await send(url: endpoint("/v1/transactions"), method: "DELETE")
+    }
+
     func gmailConnection() async throws -> GmailConnectionStatus {
         try await get("/v1/gmail/connection")
     }
@@ -340,6 +352,33 @@ actor FinanceAPIClient {
         method: String = "GET",
         body: Data? = nil
     ) async throws -> Response {
+        let data = try await responseData(url: url, method: method, body: body)
+        do {
+            return try decoder.decode(Response.self, from: data)
+        } catch {
+            throw FinanceAPIError.invalidResponse
+        }
+    }
+
+    private func responseData(
+        url: URL,
+        method: String = "GET",
+        body: Data? = nil
+    ) async throws -> Data {
+        let response = try await authorizedResponse(url: url, method: method, body: body)
+        guard (200..<300).contains(response.statusCode) else {
+            let message = (try? decoder.decode(APIErrorResponse.self, from: response.data).error)
+                ?? "Request failed."
+            throw FinanceAPIError.server(statusCode: response.statusCode, message: message)
+        }
+        return response.data
+    }
+
+    private func authorizedResponse(
+        url: URL,
+        method: String,
+        body: Data?
+    ) async throws -> (data: Data, statusCode: Int) {
         var token = try await accessToken()
         var response = try await perform(url: url, token: token, method: method, body: body)
 
@@ -352,21 +391,11 @@ actor FinanceAPIClient {
             response = try await perform(url: url, token: token, method: method, body: body)
         }
 
-        guard (200..<300).contains(response.statusCode) else {
-            if response.statusCode == 401 {
-                try keychain.delete()
-                throw FinanceAPIError.unauthorized
-            }
-            let message = (try? decoder.decode(APIErrorResponse.self, from: response.data).error)
-                ?? "Request failed."
-            throw FinanceAPIError.server(statusCode: response.statusCode, message: message)
+        if response.statusCode == 401 {
+            try keychain.delete()
+            throw FinanceAPIError.unauthorized
         }
-
-        do {
-            return try decoder.decode(Response.self, from: response.data)
-        } catch {
-            throw FinanceAPIError.invalidResponse
-        }
+        return response
     }
 
     private func perform(

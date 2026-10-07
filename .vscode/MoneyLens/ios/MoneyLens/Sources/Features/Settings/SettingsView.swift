@@ -1,9 +1,16 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var store: FinanceStore
     @Environment(\.openURL) private var openURL
     @State private var isConfirmingDisconnect = false
+    @State private var isConfirmingDataDeletion = false
+    @State private var isShowingDeleteSuccess = false
+    @State private var isExportingFile = false
+    @State private var exportDocument = TransactionExportDocument(data: Data())
+    @State private var deletedTransactionCount = 0
+    @State private var exportFileError: String?
 
     var body: some View {
         List {
@@ -11,8 +18,31 @@ struct SettingsView: View {
             syncSection
 
             Section("Data") {
-                Label("Export and data management", systemImage: "square.and.arrow.up")
-                Text("Export and delete-data options will be available in a later update.")
+                Button {
+                    Task {
+                        guard let data = await store.exportTransactions() else { return }
+                        exportDocument = TransactionExportDocument(data: data)
+                        isExportingFile = true
+                    }
+                } label: {
+                    HStack {
+                        Label("Export transactions as CSV", systemImage: "square.and.arrow.up")
+                        Spacer()
+                        if store.isWorkingOnData {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(store.isWorkingOnData)
+
+                Button(role: .destructive) {
+                    isConfirmingDataDeletion = true
+                } label: {
+                    Label("Delete all transaction data", systemImage: "trash")
+                }
+                .disabled(store.isWorkingOnData)
+
+                Text("CSV exports include transaction details but never email contents or Gmail message IDs.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -32,6 +62,17 @@ struct SettingsView: View {
         .refreshable {
             await store.loadGmailConnection()
         }
+        .fileExporter(
+            isPresented: $isExportingFile,
+            document: exportDocument,
+            contentType: .commaSeparatedText,
+            defaultFilename: "moneylens-transactions",
+            onCompletion: { result in
+                if case let .failure(error) = result {
+                    exportFileError = error.localizedDescription
+                }
+            }
+        )
         .alert(
             "Gmail settings",
             isPresented: Binding(
@@ -56,6 +97,57 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("MoneyLens will remove its saved Gmail connection. Your existing transactions will remain.")
+        }
+        .confirmationDialog(
+            "Delete all transaction data?",
+            isPresented: $isConfirmingDataDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Delete all transactions", role: .destructive) {
+                Task {
+                    guard let count = await store.deleteAllTransactions() else { return }
+                    deletedTransactionCount = count
+                    isShowingDeleteSuccess = true
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes saved transactions. Gmail stays connected and sync history is kept so previously imported emails won't add these transactions again.")
+        }
+        .alert("Transactions deleted", isPresented: $isShowingDeleteSuccess) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("\(deletedTransactionCount) transaction(s) deleted. Your Gmail connection was not changed.")
+        }
+        .alert("Couldn't export transactions", isPresented: Binding(
+            get: { exportFileError != nil },
+            set: { if !$0 { exportFileError = nil } }
+        )) {
+            Button("OK", role: .cancel) { exportFileError = nil }
+        } message: {
+            Text(exportFileError ?? "")
+        }
+    }
+
+    private struct TransactionExportDocument: FileDocument {
+        static var readableContentTypes: [UTType] { [.commaSeparatedText] }
+        static var writableContentTypes: [UTType] { [.commaSeparatedText] }
+
+        let data: Data
+
+        init(data: Data) {
+            self.data = data
+        }
+
+        init(configuration: ReadConfiguration) throws {
+            guard let contents = configuration.file.regularFileContents else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            data = contents
+        }
+
+        func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+            FileWrapper(regularFileWithContents: data)
         }
     }
 

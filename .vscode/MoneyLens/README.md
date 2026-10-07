@@ -117,6 +117,12 @@ daily, weekly, or monthly spending trends and spending by category, with
 currencies shown separately. These views use the authenticated transaction,
 category, category-update, and chart APIs.
 
+Settings can export all saved transactions as a UTF-8 CSV file or permanently
+delete them. CSV exports omit Gmail message IDs and email contents and escape
+spreadsheet formula-like text. Deleting transactions keeps the Gmail connection
+and processed-message identifiers so a later sync does not recreate deleted
+records; this operation does not delete the user's Gmail messages.
+
 ## Japanese transaction parser
 
 The backend parser registry currently includes a provider-neutral Japanese

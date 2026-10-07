@@ -81,6 +81,13 @@ final class MoneyLensTests: XCTestCase {
         XCTAssertEqual(result.categories.first?.category, "Shopping")
     }
 
+    func testDeleteTransactionsResponseDecodesDeletedCount() throws {
+        let data = Data("{\"deletedCount\":3}".utf8)
+        let result = try JSONDecoder().decode(DeleteTransactionsResponse.self, from: data)
+
+        XCTAssertEqual(result.deletedCount, 3)
+    }
+
     func testGmailSyncResponseDecodesServerCounts() throws {
         let data = Data(
             """

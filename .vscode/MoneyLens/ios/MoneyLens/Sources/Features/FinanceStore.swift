@@ -14,6 +14,7 @@ final class FinanceStore: ObservableObject {
     @Published private(set) var lastSync: GmailSyncResponse?
     @Published private(set) var isLoading = false
     @Published private(set) var isWorkingOnGmail = false
+    @Published private(set) var isWorkingOnData = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var settingsErrorMessage: String?
 
@@ -156,6 +157,39 @@ final class FinanceStore: ObservableObject {
         } catch {
             settingsErrorMessage = error.localizedDescription
             await loadGmailConnection()
+        }
+    }
+
+    func exportTransactions() async -> Data? {
+        guard !isWorkingOnData else { return nil }
+        isWorkingOnData = true
+        settingsErrorMessage = nil
+        defer { isWorkingOnData = false }
+
+        do {
+            return try await api.exportTransactions()
+        } catch {
+            settingsErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func deleteAllTransactions() async -> Int? {
+        guard !isWorkingOnData else { return nil }
+        isWorkingOnData = true
+        settingsErrorMessage = nil
+        defer { isWorkingOnData = false }
+
+        do {
+            let result = try await api.deleteAllTransactions()
+            transactions = []
+            dashboard = nil
+            charts = nil
+            chartsErrorMessage = nil
+            return result.deletedCount
+        } catch {
+            settingsErrorMessage = error.localizedDescription
+            return nil
         }
     }
 

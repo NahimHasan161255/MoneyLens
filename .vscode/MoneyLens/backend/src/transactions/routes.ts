@@ -115,6 +115,14 @@ function transactionResponse(row: TransactionRow) {
   };
 }
 
+function csvCell(value: string | null, protectSpreadsheetFormula = true): string {
+  const safeValue = value ?? "";
+  const spreadsheetSafeValue = protectSpreadsheetFormula && /^[\t\r ]*[=+\-@]/.test(safeValue)
+    ? `'${safeValue}`
+    : safeValue;
+  return `"${spreadsheetSafeValue.replaceAll('"', '""')}"`;
+}
+
 export function registerUserRoutes(
   app: FastifyInstance,
   database: QueryExecutor,
@@ -353,6 +361,64 @@ export function registerUserRoutes(
         amount: row.amount
       }))
     };
+  });
+
+  app.get("/v1/transactions/export", async (request, reply) => {
+    const userId = request.userId;
+    if (!userId) {
+      return unauthorized(reply);
+    }
+
+    const rows = await database.query<{
+      transaction_date: string;
+      transaction_time: string | null;
+      merchant: string;
+      amount: string;
+      currency: string;
+      category_name: string | null;
+      card_name: string | null;
+    }>(
+      `SELECT t.transaction_date::text, t.transaction_time::text,
+              t.merchant, t.amount::text, t.currency, c.name AS category_name,
+              t.card_name
+       FROM transactions t
+       LEFT JOIN categories c
+         ON c.id = t.category_id
+        AND (c.user_id IS NULL OR c.user_id = t.user_id)
+       WHERE t.user_id = $1
+       ORDER BY t.transaction_date DESC, t.transaction_time DESC NULLS LAST, t.id DESC`,
+      [userId]
+    );
+    const lines = [
+      ["date", "time", "merchant", "amount", "currency", "category", "card"].join(","),
+      ...rows.rows.map((row) => [
+        csvCell(row.transaction_date, false),
+        csvCell(row.transaction_time, false),
+        csvCell(row.merchant),
+        csvCell(row.amount, false),
+        csvCell(row.currency.trim(), false),
+        csvCell(row.category_name ?? "Other"),
+        csvCell(row.card_name)
+      ].join(","))
+    ];
+
+    return reply
+      .type("text/csv; charset=utf-8")
+      .header("content-disposition", 'attachment; filename="moneylens-transactions.csv"')
+      .send(`\uFEFF${lines.join("\r\n")}\r\n`);
+  });
+
+  app.delete("/v1/transactions", async (request, reply) => {
+    const userId = request.userId;
+    if (!userId) {
+      return unauthorized(reply);
+    }
+
+    const result = await database.query(
+      "DELETE FROM transactions WHERE user_id = $1",
+      [userId]
+    );
+    return { deletedCount: result.rowCount ?? 0 };
   });
 
   app.get("/v1/transactions", async (request, reply) => {
