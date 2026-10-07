@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+backend/dist/
+backend/coverage/
+ios/.build/
+ios/DerivedData/
+ios/build/
+ios/*.xcodeproj/
+ios/*.xcworkspace/
