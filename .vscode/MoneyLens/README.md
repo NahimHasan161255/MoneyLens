@@ -106,6 +106,16 @@ The backend also provides session-protected categories, transaction listing,
 details, and category updates. Gmail OAuth/sync, transaction category editing
 in the iOS UI, filters, and charts are added in later development phases.
 
+## Japanese transaction parser
+
+The backend parser registry currently includes a provider-neutral Japanese
+card-notification parser. It recognizes common date, merchant, amount, and card
+labels; normalizes full-width Japanese text and digits; and extracts optional
+times and currencies. Unsupported messages return a safe reason code without
+including message text. Provider-specific parsers can be registered ahead of
+the generic parser. The parser accepts normalized text only; Gmail retrieval
+and sync are not connected yet, and email bodies are not stored.
+
 ## Data and privacy foundations
 
 The initial PostgreSQL migration creates user, category, OAuth connection,
